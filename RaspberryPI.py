@@ -2,6 +2,17 @@
 from machine import Pin, PWM, UART
 import time
 
+# At the top
+led = Pin("LED", Pin.OUT)  # Built-in LED
+# or led = Pin(25, Pin.OUT)  # for external LED
+
+def blink(times):
+    for _ in range(times):
+        led.on()
+        time.sleep_ms(500)  # Increased from 200ms to 500ms
+        led.off()
+        time.sleep_ms(500)  # Increased from 200ms to 500ms
+
 # Comment out MPU6050 Constants and related code
 '''
 MPU6050_ADDR = 0x68
@@ -18,8 +29,15 @@ TEMP_OUT_H = 0x41
 i2c = I2C(1, scl=Pin(27), sda=Pin(26), freq=400000)
 '''
 
-# Setup UART for serial communication
-uart = UART(0, baudrate=9600)
+# Initialize UART with full configuration
+uart = UART(0, 
+    baudrate=9600,
+    bits=8,
+    parity=None,
+    stop=1,
+    tx=Pin(0),  # GP0
+    rx=Pin(1)   # GP1
+)
 
 # Servo setup
 servo1 = PWM(Pin(12))  # Pitch servo
@@ -35,7 +53,8 @@ def set_servo_angle(servo, angle):
     duty = min_duty + (max_duty - min_duty) * angle / 180
     servo.duty_u16(int(duty))
 
-# Initialize servo positions to center
+# Initialize servo positions to center and blink 4 times
+blink(4)  # Four blinks at initialization
 set_servo_angle(servo1, 90)  # Center pitch
 set_servo_angle(servo2, 90)  # Center yaw
 
@@ -90,33 +109,54 @@ def get_data():
 # main loop:
 while True:
     try:
-        # Wait for serial input
-        print("Waiting for input...")
-        while not uart.any():
-            time.sleep_ms(10)
+        if uart.any():  # Check if data is available
+            led.on()  # Visual indicator of receiving data
             
-        input_str = uart.readline().decode().strip()
-        # Remove angle brackets
-        if input_str.startswith('<') and input_str.endswith('>'):
-            input_str = input_str[1:-1]  # Remove first and last characters
-            pitch, yaw = map(int, input_str.split(','))
+            # Read the entire line
+            input_data = bytearray()
+            timeout = time.ticks_ms() + 1000  # 1 second timeout
             
-            # Validate angles
-            if 0 <= pitch <= 180 and 0 <= yaw <= 180:
-                set_servo_angle(servo1, pitch)  # Set pitch
-                set_servo_angle(servo2, yaw)    # Set yaw
-                
-                # Send confirmation in the expected format
-                uart.write(f"<OK:{pitch},{yaw}>\n".encode())
+            while time.ticks_ms() < timeout:
+                if uart.any():
+                    byte = uart.read(1)
+                    if byte == b'\n':
+                        break
+                    input_data.extend(byte)
+                time.sleep_ms(10)
+            
+            input_str = input_data.decode().strip()
+            print(f"Received: {input_str}")  # Debug print
+            
+            if input_str.startswith('<') and input_str.endswith('>'):
+                input_str = input_str[1:-1]  # Remove brackets
+                try:
+                    pitch, yaw = map(int, input_str.split(','))
+                    print(f"Parsed angles - Pitch: {pitch}, Yaw: {yaw}")
+                    
+                    if 0 <= pitch <= 180 and 0 <= yaw <= 180:
+                        set_servo_angle(servo1, pitch)
+                        set_servo_angle(servo2, yaw)
+                        
+                        # Send confirmation
+                        confirmation = f"<OK:{pitch},{yaw}>\n"
+                        uart.write(confirmation.encode())
+                        print(f"Sent: {confirmation}")  # Debug print
+                        blink(2)  # Success indicator
+                    else:
+                        uart.write("<ERROR:Invalid angles>\n".encode())
+                        blink(3)  # Error indicator
+                except:
+                    uart.write("<ERROR:Invalid format>\n".encode())
+                    blink(3)  # Error indicator
             else:
-                uart.write("<ERROR:Invalid angles>\n".encode())
-        else:
-            uart.write("<ERROR:Invalid format>\n".encode())
+                uart.write("<ERROR:Invalid format>\n".encode())
+                blink(3)  # Error indicator
             
-    except ValueError:
-        uart.write("<ERROR:Invalid input format>\n".encode())
+            led.off()
+        time.sleep_ms(10)
+            
     except Exception as e:
+        print(f"Error: {str(e)}")
         uart.write(f"<ERROR:{str(e)}>\n".encode())
+        blink(5)  # Error indicator
         time.sleep(1)
-
-
