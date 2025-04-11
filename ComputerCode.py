@@ -34,9 +34,16 @@ def connect_to_pico(port=None):
             stopbits=serial.STOPBITS_ONE,
             timeout=1
         )
-        # Add a small delay after opening the port
-        time.sleep(2)  # Allow Pico to reset and initialize
-        ser.reset_input_buffer()  # Clear any startup messages
+        # Add a longer delay after opening the port
+        time.sleep(3)  # Increased to 3 seconds to allow for complete Pico initialization
+        
+        # Clear startup messages more thoroughly
+        while ser.in_waiting:
+            startup_msg = ser.readline().decode('utf-8', errors='ignore').strip()
+            print(f"Clearing startup message: {startup_msg}")
+            time.sleep(0.1)
+        
+        ser.reset_input_buffer()
         ser.reset_output_buffer()
         print(f"Successfully connected to {port} using UART")
         return ser
@@ -52,6 +59,7 @@ def send_angles_with_confirmation(ser, pitch, yaw):
     for attempt in range(max_retries):
         # Clear any pending data
         ser.reset_input_buffer()
+        ser.reset_output_buffer()
         
         # Send command with UART protocol
         print(f"Attempt {attempt + 1}: Sending via UART: {command.strip()}")
@@ -60,17 +68,23 @@ def send_angles_with_confirmation(ser, pitch, yaw):
         
         # Wait for acknowledgment with timeout
         start_time = time.time()
-        while time.time() - start_time < 1.0:  # 1 second timeout
+        response_buffer = ""
+        while time.time() - start_time < 3.0:  # Increased timeout to 3 seconds
             if ser.in_waiting:
-                response = ser.readline().decode('utf-8').strip()
-                print(f"Received response: {response}")  # Debug print
-                if response.startswith("<OK") and response.endswith(">"):
-                    print("Position confirmed by Pico via UART")
-                    return True
+                char = ser.read().decode('utf-8', errors='ignore')
+                if char:  # Only process non-empty characters
+                    response_buffer += char
+                    print(f"Received char: {char!r}")  # Debug each character
+                    if char == '\n':
+                        print(f"Complete response: {response_buffer.strip()}")
+                        if "<OK:" in response_buffer and ">" in response_buffer:
+                            print("Position confirmed by Pico via UART")
+                            return True
+                        response_buffer = ""
             time.sleep(0.01)
         
         print(f"Retry {attempt + 1}/{max_retries}: No valid UART confirmation received")
-        time.sleep(0.5)
+        time.sleep(1.5)  # Increased delay between retries
     
     print("Failed to get UART confirmation from Pico")
     return False
