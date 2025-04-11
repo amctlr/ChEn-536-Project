@@ -1,0 +1,16 @@
+Available ports:
+Port: COM6, Description: USB Serial Device (COM6)
+Successfully connected to COM6 using UART
+Starting servo sweep test using UART protocol...
+Attempt 1: Sending via UART: <90,90>
+Retry 1/3: No valid UART confirmation received
+Attempt 2: Sending via UART: <90,90>
+Retry 2/3: No valid UART confirmation received
+Attempt 3: Sending via UART: <90,90>
+Retry 3/3: No valid UART confirmation received
+Failed to get UART confirmation from Pico
+Warning: Position not confirmed over UART, continuing anyway
+Attempt 1: Sending via UART: <0,90>
+Retry 1/3: No valid UART confirmation received
+Attempt 2: Sending via UART: <0,90>
+UART connection closed
